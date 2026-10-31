@@ -56,7 +56,16 @@ jobs:
       - name: Cari project dan siapkan keystore + editor settings
         run: |
           set -e
-          FOUND=$(find . -name project.godot -not -path "*/.godot/*" | head -n1)
+          FOUND=$(find . -name project.godot -not -path "./.git/*" -not -path "*/.godot/*" | head -n1)
+          if [ -z "$FOUND" ]; then
+            ZIP=$(find . -maxdepth 2 -iname "*.zip" -not -path "./.git/*" | head -n1)
+            if [ -n "$ZIP" ]; then
+              echo "project.godot belum ada, mengekstrak $ZIP otomatis"
+              mkdir -p _extracted
+              unzip -q -o "$ZIP" -d _extracted
+              FOUND=$(find _extracted -name project.godot -not -path "*/.godot/*" | head -n1)
+            fi
+          fi
           if [ -z "$FOUND" ]; then
             echo "ERROR: project.godot tidak ditemukan di repo. Upload isi zip ke repo."
             ls -la
