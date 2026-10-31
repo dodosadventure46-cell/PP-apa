@@ -53,32 +53,111 @@ jobs:
           mv templates/* "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/"
           godot --version
 
-      - name: Debug keystore and Godot editor settings
+      - name: Cari project dan siapkan keystore + editor settings
         run: |
           set -e
+          FOUND=$(find . -name project.godot -not -path "*/.godot/*" | head -n1)
+          if [ -z "$FOUND" ]; then
+            echo "ERROR: project.godot tidak ditemukan di repo. Upload isi zip ke repo."
+            ls -la
+            exit 1
+          fi
+          PROJ=$(dirname "$FOUND")
+          echo "PROJ=$PROJ" >> "$GITHUB_ENV"
+          echo "Project di: $PROJ"
+          cd "$PROJ"
+          ls -la
+          if [ ! -f export_presets.cfg ]; then
+            echo "export_presets.cfg tidak ada, dibuat otomatis"
+            cat > export_presets.cfg <<'PRESET'
+          [preset.0]
+
+          name="Android"
+          platform="Android"
+          runnable=true
+          advanced_options=false
+          dedicated_server=false
+          custom_features=""
+          export_filter="all_resources"
+          include_filter=""
+          exclude_filter=""
+          export_path="build/RaftMobile.apk"
+          encryption_include_filters=""
+          encryption_exclude_filters=""
+          encrypt_pck=false
+          encrypt_directory=false
+          script_export_mode=2
+
+          [preset.0.options]
+
+          custom_template/debug=""
+          custom_template/release=""
+          gradle_build/use_gradle_build=false
+          gradle_build/export_format=0
+          gradle_build/min_sdk=""
+          gradle_build/target_sdk=""
+          architectures/armeabi-v7a=false
+          architectures/arm64-v8a=true
+          architectures/x86=false
+          architectures/x86_64=false
+          version/code=1
+          version/name="1.0"
+          package/unique_name="com.raftmobile.game"
+          package/name="Raft Mobile"
+          package/signed=true
+          package/app_category=2
+          package/retain_data_on_uninstall=false
+          package/exclude_from_recents=false
+          package/show_in_app_library=true
+          package/show_as_launcher_app=false
+          launcher_icons/main_192x192=""
+          launcher_icons/adaptive_foreground_432x432=""
+          launcher_icons/adaptive_background_432x432=""
+          graphics/opengl_debug=false
+          xr_features/xr_mode=0
+          screen/immersive_mode=true
+          screen/support_small=true
+          screen/support_normal=true
+          screen/support_large=true
+          screen/support_xlarge=true
+          user_data_backup/allow=false
+          command_line/extra_args=""
+          apk_expansion/enable=false
+          PRESET
+          fi
           mkdir -p "$HOME/.android" "$HOME/.config/godot"
+          rm -f "$HOME"/.config/godot/editor_settings-*.tres
           keytool -keyalg RSA -genkeypair -alias androiddebugkey -keypass android \
             -keystore "$HOME/.android/debug.keystore" -storepass android \
             -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
-          cat > "$HOME/.config/godot/editor_settings-4.3.tres" <<SETTINGS
-          [gd_resource type="EditorSettings" format=3]
-
-          [resource]
-          export/android/android_sdk_path = "${ANDROID_HOME}"
-          export/android/java_sdk_path = "${JAVA_HOME}"
-          export/android/debug_keystore = "$HOME/.android/debug.keystore"
-          export/android/debug_keystore_user = "androiddebugkey"
-          export/android/debug_keystore_pass = "android"
-          SETTINGS
-          cp "$HOME/.config/godot/editor_settings-4.3.tres" "$HOME/.config/godot/editor_settings-4.tres"
+          # biarkan Godot membuat editor settings sendiri, lalu tambahkan path Android
+          godot --headless --editor --quit || true
+          SET=$(ls "$HOME"/.config/godot/editor_settings-*.tres 2>/dev/null | head -n1 || true)
+          if [ -z "$SET" ]; then
+            echo "Editor settings belum terbuat, membuat manual"
+            SET="$HOME/.config/godot/editor_settings-4.3.tres"
+            printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\n' > "$SET"
+          fi
+          echo "Editor settings: $SET"
+          {
+            echo "export/android/android_sdk_path = \"$ANDROID_HOME\""
+            echo "export/android/java_sdk_path = \"$JAVA_HOME\""
+            echo "export/android/debug_keystore = \"$HOME/.android/debug.keystore\""
+            echo "export/android/debug_keystore_user = \"androiddebugkey\""
+            echo "export/android/debug_keystore_pass = \"android\""
+          } >> "$SET"
+          tail -n 12 "$SET"
 
       - name: Import project
-        run: godot --headless --path . --import || true
+        run: |
+          cd "$PROJ"
+          godot --headless --import || true
 
       - name: Export APK
         run: |
+          cd "$PROJ"
           mkdir -p build
-          godot --headless --path . --export-debug "Android" build/RaftMobile.apk
+          godot --headless --export-debug "Android" build/RaftMobile.apk
           test -f build/RaftMobile.apk
           ls -la build
 
@@ -86,4 +165,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: RaftMobile-APK
-          path: build/RaftMobile.apk
+          path: ${{ env.PROJ }}/build/RaftMobile.apk
